@@ -2,8 +2,22 @@
 
 > A high-performance, single-file CDN library for Server-Driven Interactivity (SDI) with FastStack, HTMX, Alpine.js, ECharts, Flowbite, and Tailwind CSS.
 
-[![npm version](https://badge.fury.io/js/fast-ui.svg)](https://badge.fury.io/js/fast-ui)
+[![npm version](https://badge.fury.io/js/fastt-ui.svg)](https://badge.fury.io/js/fastt-ui)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Installation
+
+### CDN (Recommended)
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/fastt-ui@0.1.8/dist/fast-ui.min.js"></script>
+```
+
+### NPM
+
+```bash
+npm install fastt-ui
+```
 
 ## Why FastUI?
 
@@ -27,6 +41,18 @@ Building modern web apps with HTMX + Alpine.js + Tailwind is powerful, but comes
 - 💾 **Fragment Caching**: Optional in-memory cache for HTMX fragments
 - 🌐 **Global State Store**: Alpine store for cross-fragment state
 
+## Bundled Libraries
+
+FastUI v0.1.8 includes:
+
+| Library | Version | Purpose |
+|---------|---------|---------|
+| [Tailwind CSS](https://tailwindcss.com/) | 3.x | Utility-first CSS framework |
+| [HTMX](https://htmx.org/) | 2.0.8 | AJAX without JavaScript |
+| [Alpine.js](https://alpinejs.dev/) | 3.15.8 | Lightweight reactivity |
+| [ECharts](https://echarts.apache.org/) | 6.0.0 | Powerful charting library |
+| [Flowbite](https://flowbite.com/) | 4.0.1 | UI component library |
+
 ## Quick Start
 
 ### CDN (Recommended)
@@ -38,8 +64,8 @@ Building modern web apps with HTMX + Alpine.js + Tailwind is powerful, but comes
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FastUI App</title>
-  <!-- FastUI includes everything: Tailwind, Alpine, HTMX -->
-  <script src="https://cdn.jsdelivr.net/npm/fast-ui@latest/dist/fast-ui.min.js"></script>
+  <!-- FastUI includes everything: Tailwind, Alpine, HTMX, ECharts, Flowbite -->
+  <script src="https://cdn.jsdelivr.net/npm/fastt-ui@0.1.8/dist/fast-ui.min.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen">
   <div class="container mx-auto p-8">
@@ -69,20 +95,66 @@ Building modern web apps with HTMX + Alpine.js + Tailwind is powerful, but comes
 ### NPM
 
 ```bash
-npm install fast-ui
+npm install fastt-ui
 ```
 
 ```javascript
-import { createFastUI } from 'fast-ui';
+import FastUI from 'fastt-ui';
 
-const fastui = createFastUI({
-  debug: true,
-  cacheEnabled: true,
-  cacheTTL: 5 * 60 * 1000, // 5 minutes
-});
-
-fastui.init();
+// FastUI auto-initializes on import
+// Access the global API:
+window.FastUI.store.set('key', 'value');
 ```
+
+## FastStack Integration
+
+FastUI is designed to work seamlessly with [FastStack](https://github.com/Omerhrr/faststack):
+
+### Configure Frontend Mode
+
+In your FastStack `.env`:
+
+```bash
+# Use FastUI bundled CDN (default)
+FRONTEND_MODE=fastui
+
+# Or use individual libraries
+FRONTEND_MODE=default
+```
+
+### Template Usage
+
+FastStack templates have access to frontend settings:
+
+```html
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-4">
+    <span class="badge {% if frontend.mode == 'fastui' %}bg-indigo-100 text-indigo-700{% else %}bg-green-100 text-green-700{% endif %}">
+        {{ frontend.mode|upper }} Mode
+    </span>
+</div>
+
+<!-- x-chart works in FastUI mode -->
+{% if frontend.mode == 'fastui' %}
+<div x-chart='{"title": {"text": "Analytics"}, "series": [...]}'></div>
+{% else %}
+<!-- Manual ECharts in default mode -->
+<div id="chart"></div>
+<script>echarts.init(document.getElementById('chart')).setOption({...});</script>
+{% endif %}
+{% endblock %}
+```
+
+### Available Settings
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `FRONTEND_MODE` | `'fastui'` or `'default'` | `'fastui'` |
+| `FASTUI_CDN_URL` | FastUI CDN URL | jsDelivr |
+| `FRONTEND_ENABLE_ECHARTS` | Enable ECharts | `true` |
+| `FRONTEND_ENABLE_FLOWBITE` | Enable Flowbite | `true` |
 
 ## Directives
 
