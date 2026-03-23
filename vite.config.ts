@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => ({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: 'FastUI',
+      name: 'FastUIGlobal',
       formats: ['iife', 'es'],
       fileName: (format) => {
         const suffix = mode === 'production' ? '.min' : '';
@@ -18,9 +18,8 @@ export default defineConfig(({ mode }) => ({
     minify: mode === 'production' ? 'terser' : false,
     terserOptions: mode === 'production' ? {
       compress: {
-        drop_console: true,
+        drop_console: false,  // Keep console for debugging
         drop_debugger: true,
-        pure_funcs: ['console.log', 'console.info'],
       },
       format: {
         comments: false,
