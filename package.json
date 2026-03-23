@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "A high-performance, single-file CDN library for Server-Driven Interactivity (SDI) with FastStack, HTMX, Alpine.js, ECharts, Flowbite, and Tailwind CSS",
   "main": "dist/fast-ui.min.js",
-  "module": "dist/fast-ui.es.js",
+  "module": "dist/fast-ui.es.min.js",
   "unpkg": "dist/fast-ui.min.js",
   "jsdelivr": "dist/fast-ui.min.js",
   "types": "dist/types/index.d.ts",
