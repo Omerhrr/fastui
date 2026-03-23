@@ -10,9 +10,9 @@
  */
 
 import type { FastUIAPI, FastUIConfig, FastUIPlugin, AlpineDirective, EChartsOption, EChartsInstance } from './types';
-import { mergeConfig, isBrowser, hasAlpine, debugLog, loadScript } from './utils/helpers';
+import { mergeConfig, isBrowser, hasAlpine, debugLog } from './utils/helpers';
 import { createFragmentCache, setupCacheMiddleware } from './utils/cache';
-import { createStore, initAlpineStore, persistStore } from './utils/store';
+import { createStore, initAlpineStore } from './utils/store';
 import { createChartDirective, updateChart, getChartInstance, disposeChart, resizeAllCharts } from './directives/chart';
 import { createFlowDirective, initFlowbiteComponents, cleanupFlowbiteComponents } from './directives/flow';
 import { createLazyDirective, createInitFragmentDirective, cleanupLazyObservers } from './directives/lazy';
@@ -65,70 +65,113 @@ function createFastUI(userConfig?: Partial<FastUIConfig>): FastUIAPI {
 
     debugLog('Initializing FastUI...');
 
-    // Inject default styles
-    injectCSS(FASTUI_DEFAULT_STYLES, 'fastui-default-styles');
+    try {
+      // Inject default styles
+      injectCSS(FASTUI_DEFAULT_STYLES, 'fastui-default-styles');
 
-    // Load dependencies if not present
-    if (config.autoReinit !== false) {
+      // Load dependencies if not present (Tailwind, Alpine, HTMX)
+      debugLog('Loading dependencies...');
       await loadAllDependencies();
-    }
+      debugLog('Dependencies loaded');
 
-    // Initialize Alpine store integration
-    initAlpineStore();
+      // Wait for Alpine to be ready
+      await waitForAlpine();
 
-    // Register core directives with Alpine
-    if (hasAlpine()) {
-      registerAlpineDirectives();
-    }
+      // Initialize Alpine store integration
+      initAlpineStore();
 
-    // Install HTMX plugin
-    if (config.autoReinit !== false) {
+      // Register core directives with Alpine
+      if (hasAlpine()) {
+        registerAlpineDirectives();
+      }
+
+      // Install HTMX plugin
       const htmxPlugin = createHTMXPlugin();
       htmxPlugin.install(fastUIInstance!);
       plugins.set('htmx', htmxPlugin);
 
-      configureHTMXDefaults();
+      if (typeof window.htmx !== 'undefined') {
+        configureHTMXDefaults();
+      }
+
+      // Setup cache middleware
+      if (config.cacheEnabled) {
+        setupCacheMiddleware(cache);
+      }
+
+      // Start Alpine if not already started
+      if (hasAlpine() && !(window.Alpine as unknown as { started?: boolean }).started) {
+        window.Alpine.start();
+      }
+
+      initialized = true;
+      debugLog('FastUI initialized');
+
+      // Dispatch ready event
+      window.dispatchEvent(new CustomEvent('fastui:ready', { detail: { version: __VERSION__ } }));
+    } catch (error) {
+      console.error('[FastUI] Initialization error:', error);
+      throw error;
     }
+  }
 
-    // Setup cache middleware
-    if (config.cacheEnabled) {
-      setupCacheMiddleware(cache);
-    }
+  /**
+   * Wait for Alpine.js to be available
+   */
+  async function waitForAlpine(timeout = 10000): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (hasAlpine()) {
+        resolve();
+        return;
+      }
 
-    initialized = true;
-    debugLog('FastUI initialized');
-
-    // Dispatch ready event
-    window.dispatchEvent(new CustomEvent('fastui:ready', { detail: { version: __VERSION__ } }));
+      const startTime = Date.now();
+      const interval = setInterval(() => {
+        if (hasAlpine()) {
+          clearInterval(interval);
+          resolve();
+        } else if (Date.now() - startTime > timeout) {
+          clearInterval(interval);
+          reject(new Error('[FastUI] Timeout waiting for Alpine.js'));
+        }
+      }, 50);
+    });
   }
 
   /**
    * Register Alpine directives
    */
   function registerAlpineDirectives(): void {
-    if (!hasAlpine()) return;
+    if (!hasAlpine()) {
+      console.warn('[FastUI] Alpine.js not available, skipping directive registration');
+      return;
+    }
 
-    // Register x-chart
-    const chartDirective = createChartDirective();
-    window.Alpine.directive(chartDirective.name, chartDirective.callback);
-    directives.set(chartDirective.name, chartDirective);
+    try {
+      // Register x-chart
+      const chartDirective = createChartDirective();
+      window.Alpine.directive(chartDirective.name, chartDirective.callback);
+      directives.set(chartDirective.name, chartDirective);
 
-    // Register x-flow
-    const flowDirective = createFlowDirective();
-    window.Alpine.directive(flowDirective.name, flowDirective.callback);
-    directives.set(flowDirective.name, flowDirective);
+      // Register x-flow
+      const flowDirective = createFlowDirective();
+      window.Alpine.directive(flowDirective.name, flowDirective.callback);
+      directives.set(flowDirective.name, flowDirective);
 
-    // Register x-lazy
-    const lazyDirective = createLazyDirective();
-    window.Alpine.directive(lazyDirective.name, lazyDirective.callback);
-    directives.set(lazyDirective.name, lazyDirective);
+      // Register x-lazy
+      const lazyDirective = createLazyDirective();
+      window.Alpine.directive(lazyDirective.name, lazyDirective.callback);
+      directives.set(lazyDirective.name, lazyDirective);
 
-    // Register x-init-fragment
-    const initFragmentDirective = createInitFragmentDirective();
-    window.Alpine.directive(initFragmentDirective.name, initFragmentDirective.callback);
-    directives.set(initFragmentDirective.name, initFragmentDirective);
+      // Register x-init-fragment
+      const initFragmentDirective = createInitFragmentDirective();
+      window.Alpine.directive(initFragmentDirective.name, initFragmentDirective.callback);
+      directives.set(initFragmentDirective.name, initFragmentDirective);
 
-    debugLog('Alpine directives registered');
+      debugLog('Alpine directives registered');
+    } catch (error) {
+      console.error('[FastUI] Failed to register directives:', error);
+    }
   }
 
   /**
@@ -234,8 +277,8 @@ function createFastUI(userConfig?: Partial<FastUIConfig>): FastUIAPI {
     initFlowbiteComponents(el);
   }
 
-  // Create the API object
-  fastUIInstance = {
+  // Create the API object FIRST
+  const api: FastUIAPI = {
     version: __VERSION__,
     debug: config.debug || false,
 
@@ -253,7 +296,10 @@ function createFastUI(userConfig?: Partial<FastUIConfig>): FastUIAPI {
     initFlowbite,
   };
 
-  return fastUIInstance;
+  // Store reference
+  fastUIInstance = api;
+
+  return api;
 }
 
 // Auto-initialize when DOM is ready
@@ -262,13 +308,17 @@ if (isBrowser()) {
   window.FastUI = createFastUI();
 
   // Auto-init when DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      window.FastUI.init();
+  const autoInit = () => {
+    window.FastUI.init().catch((error) => {
+      console.error('[FastUI] Auto-init failed:', error);
     });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', autoInit);
   } else {
-    // DOM already loaded
-    window.FastUI.init();
+    // DOM already loaded, but give Alpine a chance to load
+    setTimeout(autoInit, 0);
   }
 }
 
