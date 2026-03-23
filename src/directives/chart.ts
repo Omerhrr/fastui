@@ -4,34 +4,10 @@
  */
 
 import type { ChartConfig, EChartsInstance } from '../types';
-import { debugLog, generateId, hasECharts, safeParseJSON } from '../utils/helpers';
+import { generateId, safeParseJSON } from '../utils/helpers';
 
-/**
- * Chart instances registry for cleanup and resize
- */
 const chartInstances = new Map<string, EChartsInstance>();
-
-/**
- * Resize observer for responsive charts
- */
 let resizeObserver: ResizeObserver | null = null;
-
-/**
- * Initialize the resize observer
- */
-function initResizeObserver(): void {
-  if (resizeObserver) return;
-
-  resizeObserver = new ResizeObserver((entries) => {
-    entries.forEach((entry) => {
-      const chartId = (entry.target as HTMLElement).dataset.chartId;
-      if (chartId) {
-        const instance = chartInstances.get(chartId);
-        instance?.resize();
-      }
-    });
-  });
-}
 
 /**
  * Create x-chart Alpine directive
@@ -41,150 +17,78 @@ export function createChartDirective() {
     name: 'chart',
 
     callback(el: HTMLElement, value: string, effect: () => void): void {
-      // Generate unique ID for this chart
-      const chartId = generateId('chart');
-      el.dataset.chartId = chartId;
-
+      console.log('[FastUI] x-chart directive called on:', el);
+      
       // Parse configuration
       let config: ChartConfig = {};
-
-      // Ensure value is a string
       const valueStr = typeof value === 'string' ? value : '';
-
-      // Try to get config from attribute value
-      if (valueStr && valueStr.trim()) {
+      
+      if (valueStr.trim()) {
         const trimmed = valueStr.trim();
-        // Check if it's a JSON string
         if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
           config = safeParseJSON(trimmed, {});
-        } else {
-          // Try to get from window or Alpine data
-          try {
-            const alpineData = (el as unknown as { __x?: { $data: Record<string, unknown> } }).__x?.$data;
-            if (alpineData && alpineData[trimmed]) {
-              config = alpineData[trimmed] as ChartConfig;
-            }
-          } catch {
-            // Ignore errors accessing Alpine data
-          }
+          console.log('[FastUI] Chart config parsed:', config);
         }
       }
 
-      // Also check for data-chart-config attribute
-      const configAttr = el.dataset.chartConfig;
-      if (configAttr) {
-        const parsedConfig = safeParseJSON(configAttr, {});
-        config = { ...config, ...parsedConfig };
-      }
-
       // Set dimensions
-      if (config.height) {
-        el.style.height = typeof config.height === 'number' 
-          ? `${config.height}px` 
-          : config.height;
+      if (!el.style.height) {
+        el.style.height = '300px';
       }
-      if (config.width) {
-        el.style.width = typeof config.width === 'number' 
-          ? `${config.width}px` 
-          : config.width;
-      }
-
-      // Check for lazy loading
-      if (config.lazy !== false) {
-        el.dataset.lazyChart = 'true';
+      if (!el.style.width) {
+        el.style.width = '100%';
       }
 
       // Initialize chart
-      const initChart = async () => {
-        // Wait for ECharts to be available
-        if (!hasECharts()) {
-          debugLog('ECharts not loaded, skipping chart init');
+      const initChart = () => {
+        // Check for ECharts
+        if (typeof window.echarts === 'undefined') {
+          console.warn('[FastUI] ECharts not loaded, cannot create chart');
+          el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#999;">ECharts not loaded</div>';
           return;
         }
 
         try {
-          // Dispose existing instance if any
-          const existingInstance = window.echarts.getInstanceByDom(el);
-          if (existingInstance) {
-            existingInstance.dispose();
+          // Dispose existing instance
+          const existing = window.echarts.getInstanceByDom(el);
+          if (existing) {
+            existing.dispose();
           }
 
-          // Create new instance
-          const instance = window.echarts.init(el, config.theme);
+          // Create instance
+          const instance = window.echarts.init(el);
+          const chartId = generateId('chart');
           chartInstances.set(chartId, instance);
 
-          // Set options
+          // Extract chart options
           const { lazy, responsive, theme, height, width, dataSource, refreshInterval, ...chartOptions } = config;
-          instance.setOption(chartOptions);
+          
+          // Set options
+          instance.setOption(chartOptions as object);
+          console.log('[FastUI] Chart created successfully:', chartId);
 
-          // Setup resize observer for responsive charts
-          if (config.responsive !== false) {
-            initResizeObserver();
-            resizeObserver?.observe(el);
-          }
-
-          // Setup auto-refresh if configured
-          if (refreshInterval && refreshInterval > 0) {
-            setInterval(async () => {
-              if (dataSource) {
-                try {
-                  const response = await fetch(dataSource);
-                  const data = await response.json();
-                  instance.setOption(data);
-                } catch (e) {
-                  debugLog('Failed to refresh chart data', e);
+          // Setup resize
+          if (!resizeObserver) {
+            resizeObserver = new ResizeObserver((entries) => {
+              entries.forEach((entry) => {
+                const chartId = (entry.target as HTMLElement).dataset.chartId;
+                if (chartId) {
+                  chartInstances.get(chartId)?.resize();
                 }
-              }
-            }, refreshInterval);
-          }
-
-          debugLog(`Chart initialized: ${chartId}`);
-        } catch (e) {
-          console.error('[FastUI] Failed to initialize chart:', e);
-        }
-      };
-
-      // Initialize immediately or lazy load
-      if (!config.lazy) {
-        initChart();
-      } else {
-        // Use Intersection Observer for lazy loading
-        const observer = new IntersectionObserver(
-          (entries, obs) => {
-            entries.forEach((entry) => {
-              if (entry.isIntersecting) {
-                initChart();
-                obs.unobserve(entry.target);
-              }
+              });
             });
-          },
-          { threshold: 0.1 }
-        );
-        observer.observe(el);
-      }
+          }
+          el.dataset.chartId = chartId;
+          resizeObserver.observe(el);
 
-      // Cleanup on element removal
-      const cleanup = () => {
-        const instance = chartInstances.get(chartId);
-        if (instance) {
-          instance.dispose();
-          chartInstances.delete(chartId);
+        } catch (e) {
+          console.error('[FastUI] Failed to create chart:', e);
+          el.innerHTML = `<div style="color:red;padding:10px;">Chart error: ${e}</div>`;
         }
-        resizeObserver?.unobserve(el);
       };
 
-      // Use MutationObserver to detect removal
-      const mutationObserver = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          mutation.removedNodes.forEach((node) => {
-            if (node === el || (node as Element).contains?.(el)) {
-              cleanup();
-            }
-          });
-        });
-      });
-
-      mutationObserver.observe(document.body, { childList: true, subtree: true });
+      // Initialize after a small delay to ensure DOM is ready
+      setTimeout(initChart, 100);
     },
   };
 }
@@ -221,14 +125,10 @@ export function disposeChart(chartId: string): void {
  * Resize all charts
  */
 export function resizeAllCharts(): void {
-  chartInstances.forEach((instance) => {
-    instance.resize();
-  });
+  chartInstances.forEach((instance) => instance.resize());
 }
 
-// Resize charts on window resize
+// Resize on window resize
 if (typeof window !== 'undefined') {
-  window.addEventListener('resize', () => {
-    resizeAllCharts();
-  });
+  window.addEventListener('resize', resizeAllCharts);
 }

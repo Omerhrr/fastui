@@ -1,83 +1,103 @@
 /**
  * FastUI - Server-Driven Interactivity for FastStack
  * 
- * @version 0.1.5
+ * @version 0.1.6
  * @author Omerhrr
  * @license MIT
  */
 
 import type { FastUIAPI, FastUIConfig, FastUIPlugin, AlpineDirective, EChartsOption, EChartsInstance } from './types';
-import { mergeConfig, isBrowser, hasAlpine, debugLog, loadScript } from './utils/helpers';
+import { mergeConfig, isBrowser, hasAlpine, debugLog } from './utils/helpers';
 import { createFragmentCache, setupCacheMiddleware } from './utils/cache';
 import { createStore, initAlpineStore } from './utils/store';
 import { createChartDirective, updateChart, getChartInstance, disposeChart, resizeAllCharts } from './directives/chart';
 import { createFlowDirective, initFlowbiteComponents, cleanupFlowbiteComponents } from './directives/flow';
 import { createLazyDirective, createInitFragmentDirective } from './directives/lazy';
 import { createHTMXPlugin, configureHTMXDefaults } from './plugins/htmx';
-import {
-  loadTailwind,
-  loadFlowbite,
-  loadECharts,
-  loadHTMX,
-  injectCSS,
-  FASTUI_DEFAULT_STYLES,
-} from './styles/tailwind';
+import { injectCSS, FASTUI_DEFAULT_STYLES } from './styles/tailwind';
 
 declare const __VERSION__: string;
-declare const __DEV__: boolean;
 
-// Store directives to register when Alpine loads
-const directiveCallbacks: Map<string, (el: HTMLElement, value: string, effect: () => void) => void> = new Map();
+// CDN URLs
+const CDN = {
+  tailwind: 'https://cdn.tailwindcss.com',
+  htmx: 'https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/htmx.min.js',
+  echarts: 'https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js',
+  alpine: 'https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js',
+};
 
 /**
- * Set up Alpine defer loading to register directives before Alpine starts
+ * Load a script and return promise
  */
-function setupAlpineDefer(): void {
-  if (typeof window === 'undefined') return;
-  
-  // Check if Alpine is already loaded
-  if (hasAlpine()) {
-    registerDirectivesWithAlpine();
-    return;
-  }
-
-  // Set up defer callback - Alpine CDN calls this before starting
-  (window as unknown as { deferLoadingAlpine?: (callback: () => void) => void }).deferLoadingAlpine = (callback: () => void) => {
-    debugLog('Alpine deferLoadingAlpine called');
-    registerDirectivesWithAlpine();
-    callback();
-  };
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Check if already loaded
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load: ${src}`));
+    document.head.appendChild(script);
+  });
 }
 
 /**
- * Register all directives with Alpine
+ * Check if Alpine is loaded
  */
-function registerDirectivesWithAlpine(): void {
-  if (!hasAlpine()) return;
-  
-  debugLog('Registering directives with Alpine...');
-  
-  // Register x-chart
-  const chartDirective = createChartDirective();
-  window.Alpine.directive(chartDirective.name, chartDirective.callback);
-  directiveCallbacks.set(chartDirective.name, chartDirective.callback);
-  
-  // Register x-flow
-  const flowDirective = createFlowDirective();
-  window.Alpine.directive(flowDirective.name, flowDirective.callback);
-  directiveCallbacks.set(flowDirective.name, flowDirective.callback);
-  
-  // Register x-lazy
-  const lazyDirective = createLazyDirective();
-  window.Alpine.directive(lazyDirective.name, lazyDirective.callback);
-  directiveCallbacks.set(lazyDirective.name, lazyDirective.callback);
-  
-  // Register x-init-fragment
-  const initFragmentDirective = createInitFragmentDirective();
-  window.Alpine.directive(initFragmentDirective.name, initFragmentDirective.callback);
-  directiveCallbacks.set(initFragmentDirective.name, initFragmentDirective.callback);
+function isAlpineLoaded(): boolean {
+  return typeof window.Alpine !== 'undefined';
+}
 
-  debugLog('All directives registered with Alpine');
+/**
+ * Check if ECharts is loaded  
+ */
+function isEChartsLoaded(): boolean {
+  return typeof window.echarts !== 'undefined';
+}
+
+/**
+ * Global Alpine directive registry - stores directives before Alpine loads
+ */
+const alpineDirectives: Array<{ name: string; callback: (el: HTMLElement, value: string, effect: () => void) => void }> = [];
+
+/**
+ * Register directive for Alpine (works before or after Alpine loads)
+ */
+function registerAlpineDirective(
+  name: string, 
+  callback: (el: HTMLElement, value: string, effect: () => void) => void
+): void {
+  // Store for later registration
+  alpineDirectives.push({ name, callback });
+  
+  // If Alpine already loaded, register now
+  if (isAlpineLoaded()) {
+    try {
+      window.Alpine.directive(name, callback);
+      console.log(`[FastUI] Directive "${name}" registered with Alpine`);
+    } catch (e) {
+      console.error(`[FastUI] Failed to register directive "${name}":`, e);
+    }
+  }
+}
+
+/**
+ * Register all pending directives with Alpine
+ */
+function flushDirectives(): void {
+  if (!isAlpineLoaded()) return;
+  
+  alpineDirectives.forEach(({ name, callback }) => {
+    try {
+      window.Alpine.directive(name, callback);
+      console.log(`[FastUI] Directive "${name}" flushed to Alpine`);
+    } catch (e) {
+      console.error(`[FastUI] Failed to flush directive "${name}":`, e);
+    }
+  });
 }
 
 /**
@@ -95,65 +115,111 @@ export function createFastUI(userConfig?: Partial<FastUIConfig>): FastUIAPI {
    * Initialize FastUI
    */
   async function init(): Promise<void> {
-    if (initialized) {
-      debugLog('FastUI already initialized');
-      return;
-    }
-
-    debugLog('Initializing FastUI...');
-
+    if (initialized) return;
+    
+    console.log('[FastUI] Starting initialization...');
+    
     try {
-      // Inject default styles
+      // 1. Inject styles
       injectCSS(FASTUI_DEFAULT_STYLES, 'fastui-default-styles');
-
-      // Set up Alpine defer BEFORE loading Alpine
-      setupAlpineDefer();
-
-      // Load Tailwind and HTMX first
-      await Promise.all([
-        loadTailwind(),
-        loadHTMX(),
-      ]);
-
-      // Load optional deps
-      await Promise.all([
-        loadECharts().catch(() => debugLog('ECharts optional')),
-        loadFlowbite().catch(() => debugLog('Flowbite optional')),
-      ]);
-
-      // Load Alpine.js (will call deferLoadingAlpine before starting)
-      await loadAlpineScript();
-
-      // If Alpine was already loaded, register now
-      if (hasAlpine() && directiveCallbacks.size === 0) {
-        registerDirectivesWithAlpine();
+      
+      // 2. Register directives FIRST (before Alpine loads)
+      console.log('[FastUI] Pre-registering directives...');
+      registerAlpineDirective('chart', createChartDirective().callback);
+      registerAlpineDirective('flow', createFlowDirective().callback);
+      registerAlpineDirective('lazy', createLazyDirective().callback);
+      registerAlpineDirective('init-fragment', createInitFragmentDirective().callback);
+      
+      // 3. Set up Alpine interception
+      setupAlpineInterceptor();
+      
+      // 4. Load Tailwind
+      console.log('[FastUI] Loading Tailwind...');
+      try {
+        await loadScript(CDN.tailwind);
+        console.log('[FastUI] Tailwind loaded');
+      } catch (e) {
+        console.warn('[FastUI] Tailwind load failed (may already be loaded)');
       }
-
-      // Initialize Alpine store integration
+      
+      // 5. Load ECharts (for charts)
+      console.log('[FastUI] Loading ECharts...');
+      try {
+        await loadScript(CDN.echarts);
+        console.log('[FastUI] ECharts loaded:', isEChartsLoaded());
+      } catch (e) {
+        console.warn('[FastUI] ECharts load failed');
+      }
+      
+      // 6. Load HTMX
+      console.log('[FastUI] Loading HTMX...');
+      try {
+        await loadScript(CDN.htmx);
+        console.log('[FastUI] HTMX loaded');
+      } catch (e) {
+        console.warn('[FastUI] HTMX load failed');
+      }
+      
+      // 7. Load Alpine LAST
+      console.log('[FastUI] Loading Alpine...');
+      try {
+        await loadScript(CDN.alpine);
+        console.log('[FastUI] Alpine loaded:', isAlpineLoaded());
+      } catch (e) {
+        console.warn('[FastUI] Alpine load failed (may already be loaded)');
+      }
+      
+      // 8. Flush directives to Alpine
+      flushDirectives();
+      
+      // 9. Initialize store
       initAlpineStore();
-
-      // Install HTMX plugin
-      const htmxPlugin = createHTMXPlugin();
-      htmxPlugin.install(api);
-      plugins.set('htmx', htmxPlugin);
-
+      
+      // 10. Setup HTMX plugin
       if (typeof window.htmx !== 'undefined') {
+        const htmxPlugin = createHTMXPlugin();
+        htmxPlugin.install(api);
+        plugins.set('htmx', htmxPlugin);
         configureHTMXDefaults();
       }
-
-      // Setup cache middleware
+      
+      // 11. Setup cache
       if (config.cacheEnabled) {
         setupCacheMiddleware(cache);
       }
-
+      
       initialized = true;
-      debugLog('FastUI initialized successfully');
-
+      console.log('[FastUI] ✅ Initialization complete');
+      console.log('[FastUI] ECharts available:', isEChartsLoaded());
+      console.log('[FastUI] Alpine available:', isAlpineLoaded());
+      
       window.dispatchEvent(new CustomEvent('fastui:ready', { detail: { version: __VERSION__ } }));
     } catch (error) {
       console.error('[FastUI] Initialization error:', error);
       throw error;
     }
+  }
+
+  /**
+   * Set up Alpine interceptor to catch when Alpine loads
+   */
+  function setupAlpineInterceptor(): void {
+    // If Alpine already loaded, flush immediately
+    if (isAlpineLoaded()) {
+      flushDirectives();
+      return;
+    }
+    
+    // Watch for Alpine to load
+    const checkAlpine = setInterval(() => {
+      if (isAlpineLoaded()) {
+        clearInterval(checkAlpine);
+        flushDirectives();
+      }
+    }, 10);
+    
+    // Stop checking after 5 seconds
+    setTimeout(() => clearInterval(checkAlpine), 5000);
   }
 
   function registerPlugin(name: string, plugin: FastUIPlugin): void {
@@ -164,19 +230,16 @@ export function createFastUI(userConfig?: Partial<FastUIConfig>): FastUIAPI {
 
   function registerDirective(name: string, directive: AlpineDirective): void {
     if (directives.has(name)) return;
-    if (hasAlpine()) {
-      window.Alpine.directive(name, directive.callback);
-    }
+    registerAlpineDirective(name, directive.callback);
     directives.set(name, directive);
   }
 
   function reinit(el: HTMLElement): void {
-    if (hasAlpine()) {
-      const alpine = window.Alpine as unknown as { initTree?: (el: HTMLElement) => void };
+    if (isAlpineLoaded() && (window.Alpine as unknown as { initTree?: Function }).initTree) {
       el.querySelectorAll('[x-data]').forEach((element) => {
         const htmlEl = element as HTMLElement;
-        if (!(htmlEl as unknown as { __x?: unknown }).__x && alpine.initTree) {
-          alpine.initTree(htmlEl);
+        if (!(htmlEl as unknown as { __x?: unknown }).__x) {
+          (window.Alpine as unknown as { initTree: Function }).initTree(htmlEl);
         }
       });
     }
@@ -186,16 +249,16 @@ export function createFastUI(userConfig?: Partial<FastUIConfig>): FastUIAPI {
 
   async function lazyLoad(module: string): Promise<void> {
     switch (module) {
-      case 'echarts': await loadECharts(); break;
-      case 'flowbite': await loadFlowbite(); break;
-      case 'tailwind': await loadTailwind(); break;
-      case 'htmx': await loadHTMX(); break;
+      case 'echarts': await loadScript(CDN.echarts); break;
+      case 'htmx': await loadScript(CDN.htmx); break;
     }
   }
 
   async function createChart(el: HTMLElement, options: EChartsOption): Promise<EChartsInstance> {
-    await loadECharts();
-    if (typeof window.echarts === 'undefined') {
+    if (!isEChartsLoaded()) {
+      await loadScript(CDN.echarts);
+    }
+    if (!isEChartsLoaded()) {
       throw new Error('[FastUI] ECharts not loaded');
     }
     const instance = window.echarts.init(el);
@@ -222,31 +285,7 @@ export function createFastUI(userConfig?: Partial<FastUIConfig>): FastUIAPI {
   return api;
 }
 
-/**
- * Load Alpine.js script with defer support
- */
-async function loadAlpineScript(): Promise<void> {
-  if (typeof window.Alpine !== 'undefined') {
-    debugLog('Alpine already loaded');
-    return;
-  }
-
-  const ALPINE_CDN = 'https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js';
-  
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = ALPINE_CDN;
-    script.async = true;
-    script.onload = () => {
-      debugLog('Alpine.js loaded');
-      resolve();
-    };
-    script.onerror = () => reject(new Error('Failed to load Alpine.js'));
-    document.head.appendChild(script);
-  });
-}
-
-// Auto-initialize when in browser
+// Auto-initialize
 if (isBrowser()) {
   const instance = createFastUI();
   window.FastUI = instance;
@@ -271,10 +310,6 @@ export {
   createHTMXPlugin,
   createFragmentCache,
   createStore,
-  loadTailwind,
-  loadFlowbite,
-  loadECharts,
-  loadHTMX,
   updateChart,
   getChartInstance,
   disposeChart,
