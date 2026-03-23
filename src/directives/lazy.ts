@@ -27,12 +27,15 @@ export function createLazyDirective() {
   return {
     name: 'lazy',
 
-    callback(el: HTMLElement, value: string): void {
+    callback(el: HTMLElement, value: string, effect: () => void): void {
       // Parse options
       let options: LazyLoadOptions = { ...defaultOptions };
 
-      if (value) {
-        const parsedOptions = safeParseJSON(value, {});
+      // Ensure value is a string
+      const valueStr = typeof value === 'string' ? value : '';
+      
+      if (valueStr && valueStr.trim()) {
+        const parsedOptions = safeParseJSON(valueStr, {});
         options = { ...options, ...parsedOptions };
       }
 
@@ -179,9 +182,12 @@ export function createInitFragmentDirective() {
   return {
     name: 'init-fragment',
 
-    callback(el: HTMLElement, value: string): void {
+    callback(el: HTMLElement, value: string, effect: () => void): void {
+      // Ensure value is a string
+      const valueStr = typeof value === 'string' ? value : '';
+      
       // Get cache key
-      const cacheKey = value || el.dataset.fragmentKey;
+      const cacheKey = valueStr || el.dataset.fragmentKey;
 
       if (!cacheKey) {
         debugLog('No cache key provided for x-init-fragment');
@@ -189,9 +195,9 @@ export function createInitFragmentDirective() {
       }
 
       // Check if we have cached state
-      const cachedState = sessionStorage.getItem(`fastui-fragment:${cacheKey}`);
-      if (cachedState) {
-        try {
+      try {
+        const cachedState = sessionStorage.getItem(`fastui-fragment:${cacheKey}`);
+        if (cachedState) {
           const state = JSON.parse(cachedState);
 
           // Restore state to Alpine data
@@ -201,9 +207,9 @@ export function createInitFragmentDirective() {
           }
 
           debugLog('Fragment state restored', cacheKey);
-        } catch (e) {
-          debugLog('Failed to restore fragment state', e);
         }
+      } catch (e) {
+        debugLog('Failed to restore fragment state', e);
       }
 
       // Save state before HTMX swap
@@ -212,9 +218,9 @@ export function createInitFragmentDirective() {
         if (alpineEl.__x?.$data) {
           // Filter out Alpine internals
           const state: Record<string, unknown> = {};
-          for (const [key, value] of Object.entries(alpineEl.__x.$data)) {
-            if (!key.startsWith('$') && typeof value !== 'function') {
-              state[key] = value;
+          for (const [key, val] of Object.entries(alpineEl.__x.$data)) {
+            if (!key.startsWith('$') && typeof val !== 'function') {
+              state[key] = val;
             }
           }
 

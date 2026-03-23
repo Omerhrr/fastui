@@ -4,7 +4,7 @@
  */
 
 import type { FlowbiteComponentType } from '../types';
-import { debugLog, hasFlowbite, debounce } from '../utils/helpers';
+import { debugLog, hasFlowbite } from '../utils/helpers';
 
 /**
  * Flowbite component instances
@@ -104,9 +104,14 @@ export function createFlowDirective() {
   return {
     name: 'flow',
 
-    callback(el: HTMLElement, value: string): void {
+    callback(el: HTMLElement, value: string, effect: () => void): void {
+      // Ensure value is a string
+      const valueStr = typeof value === 'string' ? value : '';
+      
       // Parse component type(s)
-      const components = value.split(',').map((c) => c.trim()) as FlowbiteComponentType[];
+      const components = valueStr.split(',').map((c) => c.trim()).filter(Boolean) as FlowbiteComponentType[];
+
+      if (components.length === 0) return;
 
       const initComponent = (type: FlowbiteComponentType) => {
         const initializer = componentInitializers[type];
@@ -146,6 +151,8 @@ export function initFlowbiteComponents(el: HTMLElement): void {
 
     types.split(',').forEach((type) => {
       const trimmedType = type.trim() as FlowbiteComponentType;
+      if (!trimmedType) return;
+      
       const initializer = componentInitializers[trimmedType];
       if (initializer) {
         try {
@@ -162,6 +169,8 @@ export function initFlowbiteComponents(el: HTMLElement): void {
   if (selfTypes) {
     selfTypes.split(',').forEach((type) => {
       const trimmedType = type.trim() as FlowbiteComponentType;
+      if (!trimmedType) return;
+      
       const initializer = componentInitializers[trimmedType];
       if (initializer) {
         try {

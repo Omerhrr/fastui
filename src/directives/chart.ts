@@ -40,7 +40,7 @@ export function createChartDirective() {
   return {
     name: 'chart',
 
-    callback(el: HTMLElement, value: string): void {
+    callback(el: HTMLElement, value: string, effect: () => void): void {
       // Generate unique ID for this chart
       const chartId = generateId('chart');
       el.dataset.chartId = chartId;
@@ -48,16 +48,24 @@ export function createChartDirective() {
       // Parse configuration
       let config: ChartConfig = {};
 
+      // Ensure value is a string
+      const valueStr = typeof value === 'string' ? value : '';
+
       // Try to get config from attribute value
-      if (value) {
+      if (valueStr && valueStr.trim()) {
+        const trimmed = valueStr.trim();
         // Check if it's a JSON string
-        if (value.startsWith('{') || value.startsWith('[')) {
-          config = safeParseJSON(value, {});
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          config = safeParseJSON(trimmed, {});
         } else {
           // Try to get from window or Alpine data
-          const alpineData = (el as unknown as { __x?: { $data: Record<string, unknown> } }).__x?.$data;
-          if (alpineData && alpineData[value]) {
-            config = alpineData[value] as ChartConfig;
+          try {
+            const alpineData = (el as unknown as { __x?: { $data: Record<string, unknown> } }).__x?.$data;
+            if (alpineData && alpineData[trimmed]) {
+              config = alpineData[trimmed] as ChartConfig;
+            }
+          } catch {
+            // Ignore errors accessing Alpine data
           }
         }
       }

@@ -4,7 +4,7 @@
  * A high-performance, single-file CDN library that replaces React/Next.js runtime
  * with a Server-Driven Interactivity (SDI) stack.
  * 
- * @version 0.1.1
+ * @version 0.1.2
  * @author Omerhrr
  * @license MIT
  */
@@ -94,13 +94,8 @@ export function createFastUI(userConfig?: Partial<FastUIConfig>): FastUIAPI {
         setupCacheMiddleware(cache);
       }
 
-      // Start Alpine if not already started
-      if (hasAlpine()) {
-        const alpine = window.Alpine as unknown as { started?: boolean; start?: () => void };
-        if (!alpine.started && alpine.start) {
-          alpine.start();
-        }
-      }
+      // NOTE: Do NOT call Alpine.start() - Alpine CDN auto-starts
+      // Only register directives, don't re-initialize
 
       initialized = true;
       debugLog('FastUI initialized');
@@ -116,8 +111,8 @@ export function createFastUI(userConfig?: Partial<FastUIConfig>): FastUIAPI {
   /**
    * Wait for Alpine.js to be available
    */
-  async function waitForAlpine(timeout = 10000): Promise<void> {
-    return new Promise((resolve, reject) => {
+  async function waitForAlpine(timeout = 5000): Promise<void> {
+    return new Promise((resolve) => {
       if (hasAlpine()) {
         resolve();
         return;
@@ -131,6 +126,7 @@ export function createFastUI(userConfig?: Partial<FastUIConfig>): FastUIAPI {
         } else if (Date.now() - startTime > timeout) {
           clearInterval(interval);
           // Don't reject - Alpine might be optional
+          console.warn('[FastUI] Alpine.js not found after timeout - some features may not work');
           resolve();
         }
       }, 50);
