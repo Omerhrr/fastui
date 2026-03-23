@@ -20,9 +20,9 @@ declare const __VERSION__: string;
 
 const CDN = {
   tailwind: 'https://cdn.tailwindcss.com',
-  htmx: 'https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/htmx.min.js',
-  echarts: 'https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js',
-  alpine: 'https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js',
+  htmx: 'https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js',
+  echarts: 'https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js',
+  alpine: 'https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js',
 };
 
 function loadScript(src: string): Promise<void> {

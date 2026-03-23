@@ -9,11 +9,11 @@ import { debugLog, loadScript } from '../utils/helpers';
  * CDN URLs
  */
 const TAILWIND_CDN = 'https://cdn.tailwindcss.com';
-const FLOWBITE_CSS_CDN = 'https://cdn.jsdelivr.net/npm/flowbite@2.2.0/dist/flowbite.min.css';
-const FLOWBITE_JS_CDN = 'https://cdn.jsdelivr.net/npm/flowbite@2.2.0/dist/flowbite.min.js';
-const ECHARTS_CDN = 'https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js';
-const ALPINE_CDN = 'https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js';
-const HTMX_CDN = 'https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/htmx.min.js';
+const FLOWBITE_CSS_CDN = 'https://cdn.jsdelivr.net/npm/flowbite@4.0.1/dist/flowbite.min.css';
+const FLOWBITE_JS_CDN = 'https://cdn.jsdelivr.net/npm/flowbite@4.0.1/dist/flowbite.min.js';
+const ECHARTS_CDN = 'https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js';
+const ALPINE_CDN = 'https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js';
+const HTMX_CDN = 'https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js';
 
 /**
  * Check if a script is already loaded
